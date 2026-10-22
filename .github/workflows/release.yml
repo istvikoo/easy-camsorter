@@ -1,0 +1,39 @@
+# Builds a universal (Apple Silicon + Intel) app and publishes it to GitHub Releases
+# whenever a version tag like v1.2.0 is pushed.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run tests
+        run: swift test
+
+      - name: Build universal app
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}" UNIVERSAL=1 ./build.sh
+
+      - name: Package
+        run: |
+          cd build
+          ditto -c -k --keepParent "Easy CamSorter.app" "EasyCamSorter-${GITHUB_REF_NAME}-macOS.zip"
+          shasum -a 256 "EasyCamSorter-${GITHUB_REF_NAME}-macOS.zip" > "EasyCamSorter-${GITHUB_REF_NAME}-macOS.zip.sha256"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "build/EasyCamSorter-${GITHUB_REF_NAME}-macOS.zip" \
+            "build/EasyCamSorter-${GITHUB_REF_NAME}-macOS.zip.sha256" \
+            --title "Easy CamSorter ${GITHUB_REF_NAME}" \
+            --notes-file .github/release-notes.md

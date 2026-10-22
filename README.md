@@ -2,7 +2,11 @@
 
 A macOS app that imports photos and videos from a camera card and sorts them into folders by capture date.
 
-**[English](#english) · [Українська](#українська)**
+[![Tests](https://github.com/istvikoo/easy-camsorter/actions/workflows/tests.yml/badge.svg)](https://github.com/istvikoo/easy-camsorter/actions/workflows/tests.yml)
+[![Latest release](https://img.shields.io/github/v/release/istvikoo/easy-camsorter)](https://github.com/istvikoo/easy-camsorter/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+**[⬇️ Download / Завантажити](https://github.com/istvikoo/easy-camsorter/releases/latest)** · **[English](#english)** · **[Українська](#українська)**
 
 ---
 
@@ -38,10 +42,16 @@ You choose the date-folder format in the window:
 - **Ukrainian:** `15 травня 2024`, `2024-05-15 (15 травня)`, `2024 / 15 травня 2024`
 - **English:** `15 May 2024`, `2024-05-15 (15 May)`, `2024 / 15 May 2024`
 
-### Requirements
+### Download and install
 
-- macOS 14 or later
-- Apple Silicon
+1. Download `EasyCamSorter-…-macOS.zip` from [Releases](https://github.com/istvikoo/easy-camsorter/releases/latest) and unzip it.
+2. Move **Easy CamSorter.app** to **Applications**.
+3. On first launch, macOS blocks the app because it isn't notarized by Apple. To allow it, open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. Or run in Terminal:
+   ```bash
+   xattr -dr com.apple.quarantine "/Applications/Easy CamSorter.app"
+   ```
+
+You need macOS 14 or later, on Apple Silicon or Intel.
 
 ### Build
 
@@ -52,11 +62,30 @@ You only need the Command Line Tools. Xcode isn't required.
 swift test        # runs the tests
 ```
 
-The app is signed locally (ad-hoc). The first time you open it on another Mac, right-click it and choose **Open**.
+Building a version for Apple Silicon and Intel: `UNIVERSAL=1 ./build.sh`.
+
+### Releases
+
+Push a version tag and GitHub Actions will run the tests, build the universal app and publish it to Releases:
+
+```bash
+git tag v1.1.0 && git push origin v1.1.0
+```
 
 ---
 
 ## Українська
+
+### Завантаження і встановлення
+
+1. Завантажте `EasyCamSorter-…-macOS.zip` з [Releases](https://github.com/istvikoo/easy-camsorter/releases/latest) і розпакуйте.
+2. Перенесіть **Easy CamSorter.app** у **Програми**.
+3. Під час першого запуску macOS заблокує застосунок, бо він не нотаризований Apple. Щоб дозволити, відкрийте **Системні параметри → Приватність і безпека**, прокрутіть униз і натисніть **Усе одно відкрити**. Або виконайте в Терміналі:
+   ```bash
+   xattr -dr com.apple.quarantine "/Applications/Easy CamSorter.app"
+   ```
+
+Потрібна macOS 14 або новіша, на Apple Silicon або Intel.
 
 ### Можливості
 
@@ -107,3 +136,8 @@ swift test        # запускає тести
 - `tools/make-icon.swift` — draws the icon `Resources/AppIcon.icns`.
 
 The UI doesn't use `@State`, because its macro ships only with Xcode.
+
+## License · Ліцензія
+
+[MIT](LICENSE) — free to use, modify and share, as long as the copyright notice is kept.
+Вільно користуйтеся, змінюйте й поширюйте, зберігаючи згадку про автора.
