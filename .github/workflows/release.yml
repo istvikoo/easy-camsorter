@@ -38,11 +38,34 @@ jobs:
         run: |
           # Опис тегу (що нового) + загальна інструкція зі встановлення.
           # Рядки з «#» git вважає коментарями й вирізає з тегу, тому заголовок додаємо тут.
-          echo "## What's new · Що нового" > build/notes.md
-          echo >> build/notes.md
-          git tag -l --format='%(contents)' "$GITHUB_REF_NAME" >> build/notes.md
+          echo "## What's new · Що нового" > build/whatsnew.md
+          echo >> build/whatsnew.md
+          git tag -l --format='%(contents)' "$GITHUB_REF_NAME" >> build/whatsnew.md
+          cp build/whatsnew.md build/notes.md
           printf '\n---\n\n' >> build/notes.md
           cat .github/release-notes.md >> build/notes.md
+
+      # Sparkle: підписуємо архів секретним ключем і пишемо appcast.xml,
+      # який програма читає за адресою …/releases/latest/download/appcast.xml.
+      - name: Sign update and write appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          if [ -z "$SPARKLE_PRIVATE_KEY" ]; then
+            echo "::error::Secret SPARKLE_PRIVATE_KEY is not set — updates can't be signed"
+            exit 1
+          fi
+          ZIP="EasyCamSorter-${GITHUB_REF_NAME}-macOS.zip"
+          SIGN=.build/artifacts/sparkle/Sparkle/bin/sign_update
+          SIG=$(echo "$SPARKLE_PRIVATE_KEY" | "$SIGN" --ed-key-file - "build/$ZIP")
+          python3 tools/make-appcast.py \
+            --version "${GITHUB_REF_NAME#v}" \
+            --url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${ZIP}" \
+            --signature "$SIG" \
+            --notes build/whatsnew.md \
+            --page "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}" \
+            > build/appcast.xml
+          xmllint --noout build/appcast.xml
 
       - name: Publish release
         env:
@@ -51,5 +74,6 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             "build/EasyCamSorter-${GITHUB_REF_NAME}-macOS.zip" \
             "build/EasyCamSorter-${GITHUB_REF_NAME}-macOS.zip.sha256" \
+            build/appcast.xml \
             --title "Easy CamSorter ${GITHUB_REF_NAME}" \
             --notes-file build/notes.md

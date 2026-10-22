@@ -22,6 +22,7 @@ A macOS app that imports photos and videos from a camera card and sorts them int
 - **Preview first.** Nothing changes until you confirm.
 - **Selective import with thumbnails.** Untick files or whole days you don't need (a RAW's `.xmp` follows it). Double-click a file to open it in Quick Look. Unticked files aren't copied and are never deleted from the card.
 - **UA / EN interface.** Switch the language with the toggle in the bottom-right corner.
+- **Automatic updates** via [Sparkle](https://sparkle-project.org): the app checks GitHub Releases once a day and installs new versions in one click (menu **Easy CamSorter → Check for Updates…**).
 
 ### Where files go
 
@@ -76,8 +77,11 @@ Building a version for Apple Silicon and Intel: `UNIVERSAL=1 ./build.sh`.
 Push a version tag and GitHub Actions will run the tests, build the universal app and publish it to Releases:
 
 ```bash
-git tag v1.1.0 && git push origin v1.1.0
+git tag -a v1.3.0 -m "- what's new…" && git push origin v1.3.0
 ```
+
+The tag message becomes the "What's new" text on the release page and in the update window.
+Updates are signed with an EdDSA key (Sparkle). The private key must be stored as the repository secret `SPARKLE_PRIVATE_KEY`; the public key is `SUPublicEDKey` in `Resources/Info.plist`.
 
 ---
 
@@ -104,6 +108,7 @@ git tag v1.1.0 && git push origin v1.1.0
 - **Спершу перегляд.** Нічого не змінюється, доки ви не підтвердите.
 - **Вибірковий імпорт з мініатюрами.** Зніміть галочки з непотрібних файлів чи цілих днів (`.xmp` іде разом зі своїм RAW). Подвійний клік відкриває файл у Quick Look. Невибрані файли не копіюються й ніколи не видаляються з картки.
 - **Інтерфейс UA / EN.** Мову перемикає кнопка праворуч унизу.
+- **Автооновлення** через [Sparkle](https://sparkle-project.org): раз на день програма перевіряє GitHub Releases і встановлює нову версію одним натисканням (меню **Easy CamSorter → Перевірити оновлення…**).
 
 ### Куди потрапляють файли
 

@@ -1,4 +1,5 @@
 import AppKit
+import Sparkle
 import SwiftUI
 
 @main
@@ -12,12 +13,31 @@ struct EasyCamSorterApp: App {
         }
         .windowResizability(.contentMinSize)
         .defaultSize(width: 860, height: 640)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesButton(updater: delegate.updater.updater, model: delegate.model)
+            }
+        }
+    }
+}
+
+/// Пункт меню «Перевірити оновлення…» (неактивний, поки перевірка вже йде).
+private struct CheckForUpdatesButton: View {
+    let updater: SPUUpdater
+    let model: SorterModel
+
+    var body: some View {
+        Button(model.t("Перевірити оновлення…", "Check for Updates…")) {
+            updater.checkForUpdates()
+        }
     }
 }
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = SorterModel()
+    /// Sparkle: раз на день перевіряє appcast.xml з GitHub Releases і пропонує оновитися.
+    let updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         model.refreshCards()
