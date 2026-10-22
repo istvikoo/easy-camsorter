@@ -14,6 +14,12 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Анотовані теги потрібні, щоб узяти з них опис «Що нового».
+      - name: Fetch tags
+        run: git fetch --tags --force
 
       - name: Run tests
         run: swift test
@@ -28,6 +34,13 @@ jobs:
           ditto -c -k --keepParent "Easy CamSorter.app" "EasyCamSorter-${GITHUB_REF_NAME}-macOS.zip"
           shasum -a 256 "EasyCamSorter-${GITHUB_REF_NAME}-macOS.zip" > "EasyCamSorter-${GITHUB_REF_NAME}-macOS.zip.sha256"
 
+      - name: Release notes
+        run: |
+          # Опис тегу (що нового) + загальна інструкція зі встановлення.
+          git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > build/notes.md
+          printf '\n---\n\n' >> build/notes.md
+          cat .github/release-notes.md >> build/notes.md
+
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -36,4 +49,4 @@ jobs:
             "build/EasyCamSorter-${GITHUB_REF_NAME}-macOS.zip" \
             "build/EasyCamSorter-${GITHUB_REF_NAME}-macOS.zip.sha256" \
             --title "Easy CamSorter ${GITHUB_REF_NAME}" \
-            --notes-file .github/release-notes.md
+            --notes-file build/notes.md
