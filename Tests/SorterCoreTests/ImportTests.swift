@@ -169,3 +169,44 @@ struct ImportFixture {
     #expect(!plan.isImport)
     #expect(plan.destinationRoot == plan.root)
 }
+
+// MARK: - Вибірковий імпорт
+
+@Test func sidecarsKnowTheirPrimary() async throws {
+    let f = ImportFixture(days: ["IMG_1.CR3": may15, "MVI_2.MP4": jan2])
+    let raw = try f.card.file("IMG_1.CR3")
+    try f.card.file("IMG_1.xmp")
+    let video = try f.card.file("MVI_2.MP4")
+    try f.card.file("MVI_2.gyroflow")
+    let plan = try await f.plan()
+    let byName = Dictionary(uniqueKeysWithValues: plan.items.map { ($0.source.lastPathComponent, $0) })
+    #expect(byName["IMG_1.xmp"]?.companionOf == raw.standardizedFileURL)
+    #expect(byName["MVI_2.gyroflow"]?.companionOf == video.standardizedFileURL)
+    #expect(byName["IMG_1.CR3"]?.companionOf == nil)
+}
+
+@Test func excludedFilesAreNotImportedAndNeverDeleted() async throws {
+    let f = ImportFixture(days: ["IMG_1.JPG": may15, "IMG_1.CR3": may15, "IMG_2.JPG": jan2])
+    try f.card.file("IMG_1.JPG")
+    let raw = try f.card.file("IMG_1.CR3")
+    try f.card.file("IMG_1.xmp")                       // іде за RAW — теж виключається
+    try f.card.file("IMG_2.JPG")
+
+    let full = try await f.plan()
+    let plan = full.excluding([raw.standardizedFileURL])
+    #expect(plan.summary.totalToMove == 2)
+    #expect(full.isExcluded(full.items.first { $0.source.lastPathComponent == "IMG_1.xmp" }!, by: [raw.standardizedFileURL]))
+
+    let report = Importer().run(plan)
+    #expect(f.pictures.allFiles() == ["15 травня 2024/IMG_1.JPG", "2 січня 2025/IMG_2.JPG"])
+
+    _ = Importer.deleteOriginals(report.verified)
+    #expect(f.card.allFiles() == ["IMG_1.CR3", "IMG_1.xmp"])   // невибрані лишилися на картці
+}
+
+@Test func excludingNothingKeepsPlan() async throws {
+    let f = ImportFixture(days: ["IMG_1.JPG": may15])
+    try f.card.file("IMG_1.JPG")
+    let plan = try await f.plan()
+    #expect(plan.excluding([]).items.count == plan.items.count)
+}

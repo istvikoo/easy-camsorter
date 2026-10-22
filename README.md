@@ -20,6 +20,7 @@ A macOS app that imports photos and videos from a camera card and sorts them int
 - **No duplicates.** Importing the same card again doesn't create `_1` copies. Files that are already imported are only verified.
 - **Organize a folder in place.** Drop any folder into the window to sort it.
 - **Preview first.** Nothing changes until you confirm.
+- **Selective import with thumbnails.** Untick files or whole days you don't need (a RAW's `.xmp` follows it). Double-click a file to open it in Quick Look. Unticked files aren't copied and are never deleted from the card.
 - **UA / EN interface.** Switch the language with the toggle in the bottom-right corner.
 
 ### Where files go
@@ -95,6 +96,7 @@ git tag v1.1.0 && git push origin v1.1.0
 - **Без дублікатів.** Повторний імпорт тієї самої картки не створює копій `_1`, а лише звіряє вже імпортовані файли.
 - **Упорядкування папки на місці.** Перетягніть у вікно будь-яку папку, щоб розсортувати її.
 - **Спершу перегляд.** Нічого не змінюється, доки ви не підтвердите.
+- **Вибірковий імпорт з мініатюрами.** Зніміть галочки з непотрібних файлів чи цілих днів (`.xmp` іде разом зі своїм RAW). Подвійний клік відкриває файл у Quick Look. Невибрані файли не копіюються й ніколи не видаляються з картки.
 - **Інтерфейс UA / EN.** Мову перемикає кнопка праворуч унизу.
 
 ### Куди потрапляють файли
@@ -131,7 +133,7 @@ swift test        # запускає тести
   - `Planner` builds the plan;
   - `Executor` sorts a folder in place;
   - `Importer` copies with verification and deletes from the card.
-- `Sources/EasyCamSorter` — the SwiftUI interface.
+- `Sources/EasyCamSorter` — the SwiftUI interface (`ThumbnailStore` makes Quick Look thumbnails).
 - `Tests/SorterCoreTests` — tests for sorting, import and deletion.
 - `tools/make-icon.swift` — draws the icon `Resources/AppIcon.icns`.
 

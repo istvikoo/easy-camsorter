@@ -16,6 +16,8 @@ public struct PlannedItem: Identifiable, Sendable {
     public let kind: FileKind
     public let capture: CaptureDay?
     public let action: Action
+    /// Для .xmp/.gyroflow — основний файл (RAW чи відео), за яким вони йдуть.
+    public var companionOf: URL? = nil
 
     /// Дату взято з дати зміни файлу і про це варто попередити.
     /// Для .gyroflow дати зйомки не буває, тому їх не позначаємо.
@@ -76,6 +78,21 @@ public struct SortPlan: Sendable {
             }
         }
         return s
+    }
+
+    /// План без вибраних файлів (і без супровідних файлів, чий основний файл виключено).
+    /// Виключені файли не копіюються й не переміщуються — а отже й ніколи не видаляються з картки.
+    public func excluding(_ sources: Set<URL>) -> SortPlan {
+        guard !sources.isEmpty else { return self }
+        let kept = items.filter { !isExcluded($0, by: sources) }
+        return SortPlan(root: root, destinationRoot: destinationRoot, naming: naming, items: kept)
+    }
+
+    /// Чи файл виключено — сам по собі або разом зі своїм основним файлом.
+    public func isExcluded(_ item: PlannedItem, by sources: Set<URL>) -> Bool {
+        if sources.contains(item.source) { return true }
+        if let primary = item.companionOf { return sources.contains(primary) }
+        return false
     }
 
     /// Шлях відносно вибраної папки — для показу користувачу.
@@ -214,6 +231,7 @@ private struct PlanBuilder {
     var videosByName: [String: [Primary]] = [:]
 
     struct Primary {
+        let source: URL
         let name: String        // початкова назва, напр. IMG_1.CR3
         let kind: FileKind
         let capture: CaptureDay
@@ -250,7 +268,7 @@ private struct PlanBuilder {
             newName = action.destinationName
             add(index, url, kind, capture, action.action)
         }
-        let primary = Primary(name: name, kind: kind, capture: capture, destDir: destDir, newName: newName)
+        let primary = Primary(source: url, name: name, kind: kind, capture: capture, destDir: destDir, newName: newName)
         primaries[key(url.deletingLastPathComponent()), default: []].append(primary)
         if kind == .video {
             videosByName[name.lowercased(), default: []].append(primary)
@@ -275,9 +293,10 @@ private struct PlanBuilder {
                 wantedName = newStem + "." + ext                             // IMG_1.xmp
             }
             if key(url.deletingLastPathComponent()) == key(primary.destDir), wantedName == name {
-                return add(index, url, kind, capture, .alreadySorted)
+                return add(index, url, kind, capture, .alreadySorted, companionOf: primary.source)
             }
-            return add(index, url, kind, capture, place(wantedName, in: primary.destDir, source: url).action)
+            return add(index, url, kind, capture, place(wantedName, in: primary.destDir, source: url).action,
+                       companionOf: primary.source)
         }
 
         guard let ownCapture else { return add(index, url, kind, nil, .skipNoDate) }
@@ -346,8 +365,9 @@ private struct PlanBuilder {
         (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.int64Value
     }
 
-    private mutating func add(_ id: Int, _ url: URL, _ kind: FileKind, _ capture: CaptureDay?, _ action: PlannedItem.Action) {
-        items.append(PlannedItem(id: id, source: url, kind: kind, capture: capture, action: action))
+    private mutating func add(_ id: Int, _ url: URL, _ kind: FileKind, _ capture: CaptureDay?, _ action: PlannedItem.Action,
+                              companionOf: URL? = nil) {
+        items.append(PlannedItem(id: id, source: url, kind: kind, capture: capture, action: action, companionOf: companionOf))
     }
 
     /// Диск у macOS зазвичай не розрізняє регістр, тому порівнюємо без нього.

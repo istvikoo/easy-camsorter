@@ -1,4 +1,5 @@
 import AppKit
+import QuickLook
 import SorterCore
 import SwiftUI
 
@@ -69,6 +70,7 @@ struct ContentView: View {
         }
         .frame(minWidth: 780, minHeight: 560)
         .navigationTitle("Easy CamSorter")
+        .quickLookPreview($model.previewURL)
         .dropDestination(for: URL.self) { urls, _ in
             guard !model.isBusy, let url = urls.first else { return false }
             model.choose(url)
@@ -354,7 +356,9 @@ private struct PlanView: View {
     let groups: [(folder: String, items: [PlannedItem])]
     let trash: [PlannedItem]
     let skipped: [PlannedItem]
-    let bytesToCopy: Int64
+    /// Усі файли, які можна вибрати (ті, що переміщуються/копіюються).
+    let selectable: [PlannedItem]
+    let sizes: [URL: Int64]
 
     init(plan: SortPlan) {
         self.plan = plan
@@ -379,10 +383,29 @@ private struct PlanView: View {
         }
         self.trash = trash
         self.skipped = skipped
-        bytesToCopy = plan.isImport ? Importer.bytesNeeded(for: plan) : 0
+        selectable = groups.flatMap(\.items)
+        var sizes: [URL: Int64] = [:]
+        if plan.isImport {
+            for item in selectable {
+                let size = (try? FileManager.default.attributesOfItem(atPath: item.source.path)[.size] as? NSNumber)?.int64Value
+                sizes[item.source] = size ?? 0
+            }
+        }
+        self.sizes = sizes
+    }
+
+    /// План з урахуванням знятих галочок.
+    private var active: SortPlan { plan.excluding(model.excludedSources) }
+
+    private var bytesToCopy: Int64 {
+        active.items.reduce(0) { sum, item in
+            if case .move = item.action { return sum + (sizes[item.source] ?? 0) }
+            return sum
+        }
     }
 
     var body: some View {
+        let summary = active.summary
         VStack(spacing: 0) {
             SummaryBar(summary: summary)
             if plan.isImport {
@@ -410,6 +433,9 @@ private struct PlanView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
             }
+            if !selectable.isEmpty {
+                selectionBar
+            }
             Divider()
             if !groups.isEmpty || !trash.isEmpty || !skipped.isEmpty {
                 list
@@ -434,13 +460,33 @@ private struct PlanView: View {
         }
     }
 
+    private var selectionBar: some View {
+        let chosen = selectable.filter { model.isIncluded($0, in: plan) }.count
+        return HStack(spacing: 10) {
+            Text(model.t("Вибрано \(chosen) з \(selectable.count)", "\(chosen) of \(selectable.count) selected"))
+                .foregroundStyle(.secondary)
+            Button(model.t("Вибрати все", "Select All")) { model.setIncluded(selectable, true) }
+                .buttonStyle(.link)
+                .disabled(chosen == selectable.count)
+            Button(model.t("Зняти все", "Select None")) { model.setIncluded(selectable, false) }
+                .buttonStyle(.link)
+                .disabled(chosen == 0)
+            Spacer()
+            Text(model.t("Подвійний клік — перегляд", "Double-click to preview"))
+                .foregroundStyle(.tertiary)
+        }
+        .font(.callout)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+    }
+
     private var list: some View {
         List {
             ForEach(groups, id: \.folder) { group in
                 Section {
                     ForEach(group.items) { MoveRow(item: $0, plan: plan) }
                 } header: {
-                    Label("\(group.folder)  ·  \(group.items.count)", systemImage: "folder")
+                    DayHeader(folder: group.folder, items: group.items, plan: plan)
                 }
             }
             if !trash.isEmpty {
@@ -479,11 +525,13 @@ private struct PlanView: View {
             Button(plan.isImport ? model.t("Скасувати", "Cancel") : model.t("Інша папка", "Other Folder")) { model.reset() }
             Button(model.t("Оновити", "Refresh")) { model.rescan() }
             Spacer()
-            if summary.hasWork {
+            if active.summary.hasWork {
                 Text(footerText).foregroundStyle(.secondary)
                 Button(actionTitle) { model.run() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
+            } else if plan.summary.hasWork {
+                Text(model.t("Нічого не вибрано", "Nothing selected")).foregroundStyle(.secondary)
             } else if !plan.isImport {
                 Label(model.t("Усе вже відсортовано", "Everything is already sorted"), systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)
@@ -495,10 +543,11 @@ private struct PlanView: View {
 
     private var actionTitle: String {
         guard plan.isImport else { return model.t("Сортувати", "Sort") }
-        return summary.totalToMove > 0 ? model.t("Імпортувати", "Import") : model.t("Перевірити", "Verify")
+        return active.summary.totalToMove > 0 ? model.t("Імпортувати", "Import") : model.t("Перевірити", "Verify")
     }
 
     private var footerText: String {
+        let summary = active.summary
         if plan.isImport {
             var parts: [String] = []
             if summary.totalToMove > 0 {
@@ -567,10 +616,18 @@ private struct MoveRow: View {
     let plan: SortPlan
 
     var body: some View {
+        let included = model.isIncluded(item, in: plan)
+        // Супровідний файл, чий основний файл виключено, вибрати окремо не можна.
+        let followsExcluded = item.companionOf.map { model.excludedSources.contains($0) } ?? false
         HStack(spacing: 8) {
-            Image(systemName: item.kind.symbol)
-                .foregroundStyle(.secondary)
-                .frame(width: 18)
+            Toggle("", isOn: Binding(get: { included }, set: { _ in model.toggle(item) }))
+                .toggleStyle(.checkbox)
+                .labelsHidden()
+                .disabled(followsExcluded)
+                .help(followsExcluded
+                      ? model.t("Іде разом зі своїм основним файлом", "Follows its main file")
+                      : model.t("Імпортувати цей файл", "Include this file"))
+            Thumbnail(url: item.source, kind: item.kind)
             Text(plan.relativePath(of: item.source))
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -591,6 +648,60 @@ private struct MoveRow: View {
                     .help(model.t("У файлі немає дати зйомки, тому взято дату його зміни", "The file has no capture date, so its modification date is used"))
             }
         }
+        .opacity(included ? 1 : 0.45)
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { model.previewURL = item.source }
+    }
+}
+
+/// Заголовок дня з галочкою «вибрати весь день».
+private struct DayHeader: View {
+    @Environment(SorterModel.self) private var model
+    let folder: String
+    let items: [PlannedItem]
+    let plan: SortPlan
+
+    var body: some View {
+        let chosen = items.filter { model.isIncluded($0, in: plan) }.count
+        let symbol = chosen == items.count ? "checkmark.square.fill" : chosen == 0 ? "square" : "minus.square.fill"
+        HStack(spacing: 6) {
+            Button { model.setIncluded(items, chosen != items.count) } label: {
+                Image(systemName: symbol)
+                    .foregroundStyle(chosen == 0 ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tint))
+            }
+            .buttonStyle(.plain)
+            .help(model.t("Вибрати або зняти весь день", "Select or deselect the whole day"))
+            .accessibilityLabel(model.t("Вибрати весь день", "Select whole day"))
+            .accessibilityValue(chosen == items.count ? model.t("вибрано", "selected")
+                                : chosen == 0 ? model.t("не вибрано", "not selected") : model.t("частково", "partly"))
+            Label("\(folder)  ·  \(chosen == items.count ? "\(items.count)" : "\(chosen)/\(items.count)")",
+                  systemImage: "folder")
+        }
+    }
+}
+
+/// Мініатюра файлу (Quick Look); поки не готова — значок типу.
+private struct Thumbnail: View {
+    @Environment(SorterModel.self) private var model
+    let url: URL
+    let kind: FileKind
+
+    var body: some View {
+        let size = ThumbnailStore.size
+        Group {
+            if let image = model.thumbnails.images[url] {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                Image(systemName: kind.symbol)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .background(.quaternary.opacity(0.4))
+        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .onAppear { model.thumbnails.request(url) }
     }
 }
 
@@ -674,7 +785,9 @@ private struct ImportReportView: View {
     private var title: String {
         if report.cancelled { return model.t("Імпорт зупинено", "Import stopped") }
         if !report.failures.isEmpty { return model.t("Імпорт завершено, але не все вдалося", "Import finished, but some files failed") }
-        if let deleted, deleted.kept.isEmpty { return model.t("Готово! Картку очищено", "Done! The card is cleared") }
+        if let deleted, deleted.kept.isEmpty {
+            return model.t("Готово! Перенесені файли видалено з картки", "Done! Imported files deleted from the card")
+        }
         return model.t("Імпорт завершено", "Import finished")
     }
 

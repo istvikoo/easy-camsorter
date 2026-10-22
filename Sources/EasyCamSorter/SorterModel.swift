@@ -72,6 +72,45 @@ final class SorterModel {
             : destinationRoot.lastPathComponent
     }
 
+    // MARK: Вибір файлів
+
+    /// Файли, з яких знято галочку (за шляхом — щоб вибір не губився після «Оновити»).
+    private(set) var excludedSources: Set<URL> = []
+    let thumbnails = ThumbnailStore()
+    /// Файл, відкритий у Quick Look (подвійний клік по рядку).
+    var previewURL: URL?
+
+    func isIncluded(_ item: PlannedItem, in plan: SortPlan) -> Bool {
+        !plan.isExcluded(item, by: excludedSources)
+    }
+
+    /// Галочка біля файлу. Супровідні файли (.xmp, .gyroflow) йдуть за своїм основним файлом.
+    func toggle(_ item: PlannedItem) {
+        if excludedSources.contains(item.source) {
+            excludedSources.remove(item.source)
+        } else {
+            excludedSources.insert(item.source)
+        }
+    }
+
+    /// Галочка біля дня або «Вибрати все / Зняти все».
+    func setIncluded(_ items: [PlannedItem], _ included: Bool) {
+        for item in items {
+            if included {
+                excludedSources.remove(item.source)
+            } else if item.companionOf == nil {
+                // Супровідні файли окремо не позначаємо — вони йдуть за основним файлом.
+                excludedSources.insert(item.source)
+            }
+        }
+    }
+
+    private func clearSelection() {
+        excludedSources = []
+        thumbnails.clear()
+        previewURL = nil
+    }
+
     // Стан вікна (тут, а не в @State: Command Line Tools не мають макросу State).
     var isDropTargeted = false
     var askDelete = false
@@ -136,6 +175,7 @@ final class SorterModel {
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) else { return }
         mode = .organize
         folder = isDir.boolValue ? url : url.deletingLastPathComponent()
+        clearSelection()
         rescan()
     }
 
@@ -159,6 +199,7 @@ final class SorterModel {
         mode = .importCard(card)
         folder = card.url
         ejectedCardName = nil
+        clearSelection()
         rescan()
     }
 
@@ -210,7 +251,9 @@ final class SorterModel {
 
     /// Кнопка «Сортувати» / «Імпортувати».
     func run() {
-        guard case .ready(let plan) = phase, plan.summary.hasWork else { return }
+        guard case .ready(let fullPlan) = phase else { return }
+        let plan = fullPlan.excluding(excludedSources)
+        guard plan.summary.hasWork else { return }
         plan.isImport ? runImport(plan) : runSort(plan)
     }
 
@@ -323,6 +366,7 @@ final class SorterModel {
         mode = .organize
         phase = .idle
         askDelete = false
+        clearSelection()
     }
 
     // MARK: - Допоміжне
