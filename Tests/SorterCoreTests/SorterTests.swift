@@ -408,3 +408,19 @@ func writeJPEG(to url: URL, exifDate: String?) throws {
     let result = await SystemDateReader().captureDay(of: psd, kind: .psd)
     #expect(result == CaptureDay(day: may15, source: .exif))
 }
+
+/// HEIC з iPhone, а також .heif / .hif, як зберігають HEIF камери Canon і Sony (усередині той самий HEIC).
+@Test(arguments: ["heic", "heif", "HIF"])
+func systemReaderReadsHeicExif(ext: String) async throws {
+    let t = try TempFolder()
+    let file = t.url.appendingPathComponent("photo.\(ext)")
+    let ctx = CGContext(data: nil, width: 64, height: 64, bitsPerComponent: 8, bytesPerRow: 0,
+                        space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+    let dest = try #require(CGImageDestinationCreateWithURL(file as CFURL, "public.heic" as CFString, 1, nil))
+    let props: [CFString: Any] = [kCGImagePropertyExifDictionary: [kCGImagePropertyExifDateTimeOriginal: "2025:01:02 21:30:00"]]
+    CGImageDestinationAddImage(dest, ctx.makeImage()!, props as CFDictionary)
+    #expect(CGImageDestinationFinalize(dest))
+    #expect(FileKind.of(file) == .photo)
+    let result = await SystemDateReader().captureDay(of: file, kind: .photo)
+    #expect(result == CaptureDay(day: jan2, source: .exif))
+}
