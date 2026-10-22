@@ -22,7 +22,7 @@ public struct PlannedItem: Identifiable, Sendable {
     /// Дату взято з дати зміни файлу і про це варто попередити.
     /// Для .gyroflow дати зйомки не буває, тому їх не позначаємо.
     public var warnsAboutFileDate: Bool {
-        capture?.source == .fileDate && kind != .videoSidecar
+        capture?.source == .fileDate && kind.needsCaptureDate
     }
 
     /// Чи файл отримає іншу назву (через дублікат).
@@ -218,7 +218,7 @@ public struct Planner: Sendable {
 }
 
 /// Призначає кожному файлу місце, стежачи, щоб назви не збігалися.
-private struct PlanBuilder {
+struct PlanBuilder {
     let root: URL           // куди кладемо
     let naming: FolderNaming
     let isImport: Bool
@@ -278,26 +278,28 @@ private struct PlanBuilder {
 
     mutating func addSidecar(index: Int, url: URL, kind: FileKind, capture ownCapture: CaptureDay?) {
         let name = url.lastPathComponent
-        let ext = url.pathExtension
-        let stem = url.deletingPathExtension().lastPathComponent   // IMG_1 або IMG_1.CR3
+        let stem = url.deletingPathExtension().lastPathComponent   // IMG_1, IMG_1.CR3, C0001M01, GL010123
+        let stems = Self.companionStems(for: stem, kind: kind)
 
-        if let primary = companion(for: url, stem: stem, prefer: kind == .videoSidecar ? .video : .raw)
-            ?? (kind == .videoSidecar ? videoAnywhere(named: stem) : nil) {
+        var anywhere: Primary?
+        if kind.followsVideo {
+            for candidate in stems { if let found = videoAnywhere(named: candidate) { anywhere = found; break } }
+        }
+        if let primary = companion(for: url, stems: stems, kind: kind) ?? anywhere {
             // Іде туди ж, куди й основний файл, і отримує таку ж нову назву.
             let capture = CaptureDay(day: primary.capture.day, source: .companion)
-            let wantedName: String
-            if stem.caseInsensitiveCompare(primary.name) == .orderedSame {
-                wantedName = primary.newName + "." + ext                     // IMG_1.CR3.xmp
-            } else {
-                let newStem = (primary.newName as NSString).deletingPathExtension
-                wantedName = newStem + "." + ext                             // IMG_1.xmp
-            }
-            if key(url.deletingLastPathComponent()) == key(primary.destDir), wantedName == name {
+            var targetDir = primary.destDir
+            if kind == .proxy { targetDir = targetDir.appendingPathComponent("proxy", isDirectory: true) }
+            let wantedName = Self.renamedSidecar(name: name, stem: stem, primary: primary)
+            if key(url.deletingLastPathComponent()) == key(targetDir), wantedName == name {
                 return add(index, url, kind, capture, .alreadySorted, companionOf: primary.source)
             }
-            return add(index, url, kind, capture, place(wantedName, in: primary.destDir, source: url).action,
+            return add(index, url, kind, capture, place(wantedName, in: targetDir, source: url).action,
                        companionOf: primary.source)
         }
+
+        // .xml і .srt без свого відео — не від камери, не чіпаємо.
+        if kind.requiresCompanion { return add(index, url, kind, nil, .skipUnsupported) }
 
         guard let ownCapture else { return add(index, url, kind, nil, .skipNoDate) }
         let destDir = destinationDir(for: ownCapture.day, kind: kind)
@@ -307,24 +309,69 @@ private struct PlanBuilder {
         add(index, url, kind, ownCapture, place(name, in: destDir, source: url).action)
     }
 
-    /// .gyroflow часто лежить окремо від відео — шукаємо відео з такою ж назвою по всій папці.
+    /// Можливі назви основного файлу для супровідного.
+    /// - Sony: `C0001M01.XML` → `C0001`
+    /// - GoPro: проксі `GL010123.LRV` → відео `GX010123` або `GH010123`
+    static func companionStems(for stem: String, kind: FileKind) -> [String] {
+        var stems = [stem]
+        if kind == .videoMeta, let range = stem.range(of: #"M\d{2}$"#, options: [.regularExpression, .caseInsensitive]),
+           range.lowerBound > stem.startIndex {
+            stems.append(String(stem[..<range.lowerBound]))
+        }
+        if kind == .proxy, stem.count > 2, stem.prefix(2).caseInsensitiveCompare("GL") == .orderedSame {
+            let rest = stem.dropFirst(2)
+            stems += ["GX" + rest, "GH" + rest]
+        }
+        return stems
+    }
+
+    /// Нова назва супровідного файлу: та сама зміна, що й в основного файлу.
+    /// IMG_1.CR3 → IMG_1_1.CR3 дає IMG_1_1.xmp, C0001M01.XML → C0001_1M01.XML, GL01.LRV → GL01_1.LRV.
+    static func renamedSidecar(name: String, stem: String, primary: Primary) -> String {
+        guard primary.newName != primary.name else { return name }   // основний не перейменовано
+        let ext = (name as NSString).pathExtension
+        let oldStem = (primary.name as NSString).deletingPathExtension
+        let newStem = (primary.newName as NSString).deletingPathExtension
+        func same(_ a: Substring, _ b: Substring) -> Bool { a.caseInsensitiveCompare(b) == .orderedSame }
+
+        if same(Substring(stem), Substring(primary.name)) {         // IMG_1.CR3.xmp
+            return primary.newName + "." + ext
+        }
+        if same(Substring(stem), Substring(oldStem)) {              // IMG_1.xmp
+            return newStem + "." + ext
+        }
+        if stem.count > oldStem.count, same(stem.prefix(oldStem.count), Substring(oldStem)) {   // C0001M01.XML
+            return newStem + stem.dropFirst(oldStem.count) + "." + ext
+        }
+        if stem.count > 2, oldStem.count > 2, same(stem.dropFirst(2), oldStem.dropFirst(2)) {   // GL010123.LRV
+            return stem.prefix(2) + newStem.dropFirst(2) + "." + ext
+        }
+        return name
+    }
+
+    /// Супровідні файли відео часто лежать окремо — шукаємо відео з такою ж назвою по всій папці.
     /// Беремо лише якщо таке відео одне, щоб не сплутати однакові назви з різних днів (C0001.MP4).
     private func videoAnywhere(named stem: String) -> Primary? {
         let found = videosByName[stem.lowercased()] ?? []
         return found.count == 1 ? found[0] : nil
     }
 
-    private func companion(for url: URL, stem: String, prefer: FileKind) -> Primary? {
-        let candidates = primaries[key(url.deletingLastPathComponent())] ?? []
-        // IMG_1.CR3.xmp → точний збіг з IMG_1.CR3
-        if let exact = candidates.first(where: { $0.name.caseInsensitiveCompare(stem) == .orderedSame }) {
-            return exact
+    private func companion(for url: URL, stems: [String], kind: FileKind) -> Primary? {
+        var candidates = primaries[key(url.deletingLastPathComponent())] ?? []
+        // Супровідні файли відео шукають пару лише серед відео (IMG_1.xml не належить до IMG_1.JPG).
+        if kind.followsVideo { candidates = candidates.filter { $0.kind == .video } }
+        for stem in stems {
+            // IMG_1.CR3.xmp → точний збіг з IMG_1.CR3
+            if let exact = candidates.first(where: { $0.name.caseInsensitiveCompare(stem) == .orderedSame }) {
+                return exact
+            }
+            // IMG_1.xmp → IMG_1.<будь-що>; для .xmp перевага за RAW
+            let sameStem = candidates.filter {
+                ($0.name as NSString).deletingPathExtension.caseInsensitiveCompare(stem) == .orderedSame
+            }
+            if let found = sameStem.first(where: { $0.kind == .raw }) ?? sameStem.first { return found }
         }
-        // IMG_1.xmp → IMG_1.<будь-що>; перевага — RAW для .xmp, відео для .gyroflow
-        let sameStem = candidates.filter {
-            ($0.name as NSString).deletingPathExtension.caseInsensitiveCompare(stem) == .orderedSame
-        }
-        return sameStem.first(where: { $0.kind == prefer }) ?? sameStem.first
+        return nil
     }
 
     private func destinationDir(for day: DayDate, kind: FileKind) -> URL {

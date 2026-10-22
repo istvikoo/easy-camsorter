@@ -32,9 +32,15 @@ A macOS app that imports photos and videos from a camera card and sorts them int
 | XMP | xmp | next to its RAW file, with the same name |
 | Videos | mp4, mov, mts, avi, mkv… | `<date>/video/` |
 | Gyroflow | gyroflow | next to the video with the same name (searched across the whole folder) |
+| Video thumbnails | thm (Canon, GoPro) | next to the video |
+| Video metadata | xml (Sony `C0001M01.XML`), srt (DJI telemetry) | next to the video; only if the matching video is found |
+| Proxies | lrv (GoPro `GL…`, DJI) | `<date>/video/proxy/` |
+| NiYien gyro logs | `*_mix.bin` | `<date>/video/gyro/` (date from the file name) |
 | PSD | psd, psb | `<date>/PSD/` |
 | Canon service files | ctg, cpf | Trash (when importing, they stay on the card) |
 | Anything else | | stays where it is |
+
+Video companion files follow their video: same folder, and the same `_1` suffix if the video had to be renamed.
 
 The capture date comes from photo and video metadata. exiftool isn't needed. If a file has no capture date, its modification date is used, and the file is marked in the list.
 
@@ -108,9 +114,15 @@ git tag v1.1.0 && git push origin v1.1.0
 | XMP | xmp | поруч зі своїм RAW, з такою ж назвою |
 | Відео | mp4, mov, mts, avi, mkv… | `<дата>/video/` |
 | Gyroflow | gyroflow | до відео з такою ж назвою (шукається по всій папці) |
+| Мініатюри відео | thm (Canon, GoPro) | поруч з відео |
+| Метадані відео | xml (Sony `C0001M01.XML`), srt (телеметрія DJI) | поруч з відео; лише якщо знайдено відповідне відео |
+| Проксі | lrv (GoPro `GL…`, DJI) | `<дата>/video/proxy/` |
+| Гіро-логи NiYien | `*_mix.bin` | `<дата>/video/gyro/` (дата з назви файлу) |
 | PSD | psd, psb | `<дата>/PSD/` |
 | Службові файли Canon | ctg, cpf | у Кошик (під час імпорту лишаються на картці) |
 | Інше | | лишається на місці |
+
+Супровідні файли відео йдуть за своїм відео: у ту саму папку і з тим самим суфіксом `_1`, якщо відео довелося перейменувати.
 
 Дата береться з метаданих фото й відео. Якщо дати зйомки немає, береться дата зміни файлу, і такий файл позначається в списку.
 

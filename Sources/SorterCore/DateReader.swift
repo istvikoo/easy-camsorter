@@ -7,7 +7,8 @@ public enum DateSource: String, Sendable {
     case exif        // метадані фото
     case video       // метадані відео
     case xmp         // дата всередині .xmp
-    case companion   // дата RAW-файлу, до якого належить .xmp
+    case companion   // дата основного файлу (RAW чи відео), до якого належить супровідний
+    case fileName    // дата з назви файлу (гіро-логи NiYien: 2026-10-12_17-06-59_mix.bin)
     case fileDate    // дата зміни файлу (запасний варіант)
 }
 
@@ -33,12 +34,15 @@ public struct SystemDateReader: CaptureDateReading {
         switch kind {
         case .raw, .photo, .psd:
             if let d = Self.imageDay(url) { return CaptureDay(day: d, source: .exif) }
-        case .video:
+        case .video, .proxy:
+            // .lrv — це той самий MP4, лише меншої якості.
             if let d = await Self.videoDay(url) { return CaptureDay(day: d, source: .video) }
         case .sidecar:
             if let d = Self.xmpDay(url) { return CaptureDay(day: d, source: .xmp) }
-        case .videoSidecar:
-            break   // дати всередині немає — береться з відео або з дати файлу
+        case .gyroLog:
+            if let d = DayDate.parse(url.lastPathComponent) { return CaptureDay(day: d, source: .fileName) }
+        case .videoSidecar, .thumbnail, .videoMeta:
+            break   // дата береться з відео або з дати файлу
         case .junk, .other:
             return nil
         }

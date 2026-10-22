@@ -894,7 +894,7 @@ private struct MessagePane<Actions: View>: View {
 }
 
 extension FileKind {
-    static let displayOrder: [FileKind] = [.photo, .raw, .sidecar, .psd, .video, .videoSidecar]
+    static let displayOrder: [FileKind] = [.photo, .raw, .sidecar, .psd, .video, .proxy, .videoSidecar, .thumbnail, .videoMeta, .gyroLog]
 
     func title(_ language: AppLanguage) -> String {
         let uk = language == .uk
@@ -905,6 +905,10 @@ extension FileKind {
         case .video: return uk ? "Відео" : "Videos"
         case .psd: return "PSD"
         case .videoSidecar: return "Gyroflow"
+        case .thumbnail: return "THM"
+        case .videoMeta: return "XML / SRT"
+        case .proxy: return uk ? "Проксі" : "Proxies"
+        case .gyroLog: return uk ? "Гіро-логи" : "Gyro logs"
         case .junk: return uk ? "Службові" : "Service"
         case .other: return uk ? "Інші" : "Other"
         }
@@ -918,6 +922,10 @@ extension FileKind {
         case .video: return "video"
         case .psd: return "square.3.layers.3d"
         case .videoSidecar: return "gyroscope"
+        case .thumbnail: return "photo.on.rectangle"
+        case .videoMeta: return "doc.text"
+        case .proxy: return "film.stack"
+        case .gyroLog: return "waveform.path.ecg"
         case .junk: return "trash"
         case .other: return "doc"
         }
