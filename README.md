@@ -6,6 +6,8 @@ A macOS app that imports photos and videos from a camera card and sorts them int
 [![Latest release](https://img.shields.io/github/v/release/istvikoo/easy-camsorter)](https://github.com/istvikoo/easy-camsorter/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+<p align="center"><img src="docs/screenshot.png" alt="Easy CamSorter: card connected, ready to import" width="720"></p>
+
 **[⬇️ Download / Завантажити](https://github.com/istvikoo/easy-camsorter/releases/latest)** · **[English](#english)** · **[Українська](#українська)**
 
 ---
