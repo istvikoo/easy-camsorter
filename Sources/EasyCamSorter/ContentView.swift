@@ -51,9 +51,9 @@ struct ContentView: View {
                     ImportProgressPane(progress: progress)
                 case .imported(let report, let deleted):
                     ImportReportView(report: report, deleted: deleted)
-                case .deleting:
-                    ProgressPane(title: model.t("Видаляю перенесені файли з картки…", "Deleting imported files from the card…"),
-                                 done: 0, total: 0, of: "", cancelTitle: nil, onCancel: nil)
+                case .deleting(let done, let total):
+                    ProgressPane(title: model.t("Ще раз звіряю файли з карткою й видаляю…", "Re-checking files against the card and deleting…"),
+                                 done: done, total: total, of: model.t("з", "of"), cancelTitle: nil, onCancel: nil)
                 case .failed(let problem):
                     MessagePane(symbol: "exclamationmark.triangle.fill", tint: .orange,
                                 title: model.t("Щось пішло не так", "Something went wrong"), text: text(for: problem)) {
@@ -862,6 +862,8 @@ private struct ResultLayout<Buttons: View>: View {
         case .copyMissing:
             return model.t("Копію в «\(model.destinationName)» не знайдено або вона змінилася — файл залишено на картці",
                            "The copy in “\(model.destinationName)” is missing or changed — the file was kept on the card")
+        case .notEnoughSpace:
+            return model.t("Недостатньо місця на диску для цього файлу", "Not enough disk space for this file")
         case .sourceChanged:
             return model.t("Файл на картці змінився після імпорту — його залишено", "The file on the card changed after import — it was kept")
         case .system(let message):

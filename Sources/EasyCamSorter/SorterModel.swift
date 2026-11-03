@@ -43,7 +43,7 @@ final class SorterModel {
         case finished(SortReport)
         case importing(ImportProgress)
         case imported(ImportReport, DeleteReport?)
-        case deleting
+        case deleting(done: Int, total: Int)
         case failed(Problem)
     }
 
@@ -113,6 +113,8 @@ final class SorterModel {
 
     // Стан вікна (тут, а не в @State: Command Line Tools не мають макросу State).
     var isDropTargeted = false
+    /// Чи можна зараз перевірити оновлення (Sparkle забороняє, поки перевірка вже йде).
+    var canCheckForUpdates = true
     var askDelete = false
 
     var naming: FolderNaming {
@@ -269,7 +271,8 @@ final class SorterModel {
                 Executor().run(plan) { done, total in
                     guard done == total || done % 20 == 0 else { return }
                     Task { @MainActor in
-                        guard self.generation == gen else { return }
+                        // Запізніле оновлення не повинно повернути екран «Сортую…» після «Готово».
+                        guard self.generation == gen, case .sorting = self.phase else { return }
                         self.phase = .sorting(done: done, total: total)
                     }
                 }
@@ -328,10 +331,17 @@ final class SorterModel {
         guard case .imported(let report, nil) = phase, !report.verified.isEmpty else { return }
         generation += 1
         let gen = generation
-        phase = .deleting
+        phase = .deleting(done: 0, total: report.verified.count)
         task = Task {
             let result = await Task.detached(priority: .userInitiated) {
-                Importer.deleteOriginals(report.verified)
+                Importer.deleteOriginals(report.verified) { partial, total in
+                    let done = partial.checked
+                    guard done == total || done % 10 == 0 else { return }
+                    Task { @MainActor in
+                        guard self.generation == gen, case .deleting = self.phase else { return }
+                        self.phase = .deleting(done: done, total: total)
+                    }
+                }
             }.value
             guard generation == gen else { return }
             phase = .imported(report, result)

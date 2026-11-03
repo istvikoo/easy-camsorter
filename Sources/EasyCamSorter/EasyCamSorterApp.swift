@@ -30,6 +30,7 @@ private struct CheckForUpdatesButton: View {
         Button(model.t("Перевірити оновлення…", "Check for Updates…")) {
             updater.checkForUpdates()
         }
+        .disabled(!model.canCheckForUpdates)
     }
 }
 
@@ -38,9 +39,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = SorterModel()
     /// Sparkle: раз на день перевіряє appcast.xml з GitHub Releases і пропонує оновитися.
     let updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+    private var updateObservation: NSKeyValueObservation?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         model.refreshCards()
+        // Пункт «Перевірити оновлення…» неактивний, поки перевірка вже йде.
+        updateObservation = updater.updater.observe(\.canCheckForUpdates, options: [.initial, .new]) { [model] updater, _ in
+            // Sparkle працює й сповіщає на головному потоці.
+            MainActor.assumeIsolated { model.canCheckForUpdates = updater.canCheckForUpdates }
+        }
         // Помічаємо, коли картку вставили чи витягли.
         let center = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification] {

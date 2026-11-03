@@ -11,6 +11,7 @@ public struct SortReport: Sendable {
             case checksumMismatch   // копія не збіглася з оригіналом
             case copyMissing        // копії немає або вона змінилася
             case sourceChanged      // файл на картці змінився після імпорту
+            case notEnoughSpace     // на диску не вистачило місця для цього файлу
             case system(String)     // помилка macOS (уже перекладена системою)
         }
 
@@ -23,6 +24,8 @@ public struct SortReport: Sendable {
             self.file = file
             if case ImportError.checksumMismatch = error {
                 reason = .checksumMismatch
+            } else if case ImportError.notEnoughSpace = error {
+                reason = .notEnoughSpace
             } else {
                 reason = .system(error.localizedDescription)
             }

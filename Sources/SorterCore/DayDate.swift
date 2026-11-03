@@ -7,7 +7,8 @@ public struct DayDate: Hashable, Comparable, Sendable, CustomStringConvertible {
     public let day: Int
 
     public init?(year: Int, month: Int, day: Int) {
-        guard (1900...2200).contains(year), (1...12).contains(month), (1...31).contains(day) else { return nil }
+        guard (1900...2200).contains(year), (1...12).contains(month),
+              (1...Self.daysIn(month: month, year: year)).contains(day) else { return nil }
         self.year = year
         self.month = month
         self.day = day
@@ -29,6 +30,15 @@ public struct DayDate: Hashable, Comparable, Sendable, CustomStringConvertible {
               let m = Int(String(chars[5..<7])),
               let d = Int(String(chars[8..<10])) else { return nil }
         return DayDate(year: y, month: m, day: d)
+    }
+
+    /// Скільки днів у місяці (31 лютого з пошкоджених метаданих — не дата).
+    static func daysIn(month: Int, year: Int) -> Int {
+        switch month {
+        case 2: return (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 ? 29 : 28
+        case 4, 6, 9, 11: return 30
+        default: return 31
+        }
     }
 
     public static func < (a: DayDate, b: DayDate) -> Bool {

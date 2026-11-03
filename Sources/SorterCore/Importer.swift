@@ -7,6 +7,8 @@ public struct VerifiedCopy: Sendable {
     public let destination: URL
     public let size: Int64
     public let sourceModified: Date?
+    /// SHA-256 оригіналу; перед видаленням картку читаємо ще раз і звіряємо з ним.
+    public let digest: Data
 }
 
 public struct ImportProgress: Sendable {
@@ -36,6 +38,8 @@ public struct ImportReport: Sendable {
 
 public struct DeleteReport: Sendable {
     public var deleted = 0
+    /// Скільки файлів уже перевірено (для смуги прогресу).
+    public var checked = 0
     /// Файли, які залишено на картці, з причиною.
     public var kept: [SortReport.Failure] = []
 
@@ -125,12 +129,12 @@ public struct Importer: Sendable {
 
                 case .alreadyImported(let existing):
                     let size = Self.fileSize(item.source) ?? 0
-                    let sourceDigest = try Self.digest(of: item.source, onBytes: onBytes)
+                    let sourceDigest = try Self.digest(of: item.source, uncached: true, onBytes: onBytes)
                     if try Self.digest(of: existing, uncached: true) == sourceDigest {
                         report.alreadyThere += 1
                         report.verified.append(VerifiedCopy(
                             source: item.source, destination: existing, size: size,
-                            sourceModified: Self.modificationDate(item.source)))
+                            sourceModified: Self.modificationDate(item.source), digest: Data(sourceDigest)))
                     } else {
                         // Та сама назва й розмір, але інший вміст — копіюємо поруч з номером.
                         let copy = try copyVerified(from: item.source, to: existing, onBytes: { _ in })
@@ -154,11 +158,17 @@ public struct Importer: Sendable {
     }
 
     /// Видаляє з картки лише перевірені файли. Перед кожним видаленням ще раз упевнюється,
-    /// що оригінал не змінився, а копія на місці й має той самий розмір.
-    public static func deleteOriginals(_ copies: [VerifiedCopy]) -> DeleteReport {
+    /// що копія на місці й має той самий розмір, а оригінал не змінився: ще раз читає його
+    /// з картки (в обхід кешу) і звіряє контрольну суму. Так ловимо й збої читання картки,
+    /// які під час копіювання дали б однаково хибні дані і в копію, і в її перевірку.
+    public static func deleteOriginals(_ copies: [VerifiedCopy], progress: (DeleteReport, Int) -> Void = { _, _ in }) -> DeleteReport {
         let fm = FileManager.default
         var report = DeleteReport()
         for copy in copies {
+            defer {
+                report.checked += 1
+                progress(report, copies.count)
+            }
             guard fm.fileExists(atPath: copy.source.path) else { continue }   // уже немає
             guard fileSize(copy.destination) == copy.size else {
                 report.kept.append(.init(file: copy.source, reason: .copyMissing))
@@ -169,6 +179,10 @@ public struct Importer: Sendable {
                 continue
             }
             do {
+                guard try Data(digest(of: copy.source, uncached: true)) == copy.digest else {
+                    report.kept.append(.init(file: copy.source, reason: .checksumMismatch))
+                    continue
+                }
                 try fm.removeItem(at: copy.source)
                 report.deleted += 1
             } catch {
@@ -189,7 +203,14 @@ public struct Importer: Sendable {
         let modified = attrs[.modificationDate] as? Date
         let created = attrs[.creationDate] as? Date
 
-        let temp = dir.appendingPathComponent(".\(dest.lastPathComponent).\(UUID().uuidString).part")
+        // Чи вистачить місця саме на цей файл (із запасом 100 МБ) — щоб не заповнити диск до краю.
+        let sourceSize = (attrs[.size] as? NSNumber)?.int64Value ?? 0
+        if let available = Self.availableSpace(at: dir), sourceSize + (100 << 20) > available {
+            throw ImportError.notEnoughSpace(needed: sourceSize, available: available)
+        }
+
+        // Коротка назва: довга назва файлу + UUID могла б перевищити ліміт у 255 байтів.
+        let temp = dir.appendingPathComponent(".easycamsorter-\(UUID().uuidString).part")
         guard fm.createFile(atPath: temp.path, contents: nil) else {
             throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: temp.path])
         }
@@ -198,6 +219,8 @@ public struct Importer: Sendable {
 
         let input = try FileHandle(forReadingFrom: source)
         defer { try? input.close() }
+        // Не кешуємо картку в пам'яті, щоб перевірка перед видаленням читала саму картку.
+        _ = fcntl(input.fileDescriptor, F_NOCACHE, 1)
         let output = try FileHandle(forWritingTo: temp)
         var hasher = SHA256()
         var size: Int64 = 0
@@ -217,7 +240,8 @@ public struct Importer: Sendable {
             throw error
         }
 
-        guard try Self.digest(of: temp, uncached: true) == hasher.finalize() else {
+        let sourceDigest = hasher.finalize()
+        guard try Self.digest(of: temp, uncached: true) == sourceDigest else {
             throw ImportError.checksumMismatch
         }
 
@@ -230,7 +254,8 @@ public struct Importer: Sendable {
         let final = Executor.freeURL(near: dest)
         try fm.moveItem(at: temp, to: final)
         finished = true
-        return VerifiedCopy(source: source, destination: final, size: size, sourceModified: modified)
+        return VerifiedCopy(source: source, destination: final, size: size, sourceModified: modified,
+                            digest: Data(sourceDigest))
     }
 
     static func digest(of url: URL, uncached: Bool = false, onBytes: (Int) -> Void = { _ in }) throws -> SHA256.Digest {

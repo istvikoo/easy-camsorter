@@ -264,7 +264,9 @@ struct PlanBuilder {
             newName = name
             add(index, url, kind, capture, .alreadySorted)
         } else {
-            let action = place(name, in: destDir, source: url)
+            // Назва RAW/відео має бути вільною разом з назвами його супровідних файлів:
+            // інакше новий IMG_1.CR3 опиниться поруч зі старим чужим IMG_1.xmp.
+            let action = place(name, in: destDir, source: url, companions: { Self.companionNames(for: $0, kind: kind) })
             newName = action.destinationName
             add(index, url, kind, capture, action.action)
         }
@@ -349,6 +351,16 @@ struct PlanBuilder {
         return name
     }
 
+    /// Назви супровідних файлів, які програми (Lightroom, Gyroflow) самі підхоплять поруч з основним файлом.
+    static func companionNames(for name: String, kind: FileKind) -> [String] {
+        let stem = (name as NSString).deletingPathExtension
+        switch kind {
+        case .raw: return ["\(stem).xmp", "\(name).xmp"]
+        case .video: return ["\(stem).gyroflow", "\(name).gyroflow", "\(stem).thm"]
+        default: return []
+        }
+    }
+
     /// Супровідні файли відео часто лежать окремо — шукаємо відео з такою ж назвою по всій папці.
     /// Беремо лише якщо таке відео одне, щоб не сплутати однакові назви з різних днів (C0001.MP4).
     private func videoAnywhere(named stem: String) -> Primary? {
@@ -385,7 +397,11 @@ struct PlanBuilder {
     /// Підбирає назву: IMG.jpg → IMG_1.jpg → IMG_2.jpg…, поки не знайдеться вільна.
     /// При імпорті файл з тією ж назвою й розміром вважаємо вже імпортованим
     /// (вміст звіримо контрольною сумою під час імпорту).
-    private mutating func place(_ name: String, in dir: URL, source: URL) -> (action: PlannedItem.Action, destinationName: String) {
+    /// `companions` — назви, які теж мають бути вільні, щоб узяти нову назву.
+    private mutating func place(
+        _ name: String, in dir: URL, source: URL,
+        companions: (String) -> [String] = { _ in [] }
+    ) -> (action: PlannedItem.Action, destinationName: String) {
         let stem = (name as NSString).deletingPathExtension
         let ext = (name as NSString).pathExtension
         let sourceSize = isImport ? Self.size(of: source) : nil
@@ -394,7 +410,7 @@ struct PlanBuilder {
         while true {
             let url = dir.appendingPathComponent(candidate)
             if !reserved.contains(key(url)) {
-                if !FileManager.default.fileExists(atPath: url.path) {
+                if !FileManager.default.fileExists(atPath: url.path), isFree(companions(candidate), in: dir) {
                     reserved.insert(key(url))
                     return (.move(to: url), candidate)
                 }
@@ -405,6 +421,13 @@ struct PlanBuilder {
             }
             candidate = ext.isEmpty ? "\(stem)_\(counter)" : "\(stem)_\(counter).\(ext)"
             counter += 1
+        }
+    }
+
+    private func isFree(_ names: [String], in dir: URL) -> Bool {
+        names.allSatisfy { name in
+            let url = dir.appendingPathComponent(name)
+            return !reserved.contains(key(url)) && !FileManager.default.fileExists(atPath: url.path)
         }
     }
 
